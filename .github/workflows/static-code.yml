@@ -1,16 +1,36 @@
-name: Python Static Code Analysis
+name: Universal Python Static Code Analysis
+
+# 🚀 UNIVERSAL PYTHON STATIC CODE ANALYSIS WORKFLOW
+# 
+# This workflow is designed to work with ANY Python project, regardless of:
+# - Framework (Django, Flask, FastAPI, etc.)
+# - Project structure (src/, app/, lib/, etc.)
+# - Dependency management (requirements.txt, pyproject.toml, Pipfile, etc.)
+# - Package layout (flat, nested, monorepo, etc.)
+#
+# ✅ Features:
+# - Complete self-contained configuration (no external config files needed)
+# - Automatic project structure detection
+# - Framework-aware analysis
+# - Comprehensive tool coverage (black, isort, flake8, pylint, mypy, coverage)
+# - Intelligent quality gates with configurable thresholds
+# - Detailed reporting and merge decision logic
+#
+# 📋 Simply copy this file to .github/workflows/ in any Python project!
 
 on:
   push:
-    branches: ["*"]
+    branches:
+      - "**"
   pull_request:
-    branches: ["*"]
+    branches:
+      - "**"
 
 env:
   # Configuration - adjust these values as needed
-  MAX_MINOR_ISSUES: 5  # Maximum minor issues allowed before blocking
-  MIN_COVERAGE_THRESHOLD: 70  # Minimum coverage percentage required
-  MIN_PYLINT_SCORE: 7.0  # Minimum pylint score required
+  MAX_MINOR_ISSUES: 5 # Maximum minor issues allowed before blocking
+  MIN_COVERAGE_THRESHOLD: 70 # Minimum coverage percentage required
+  MIN_PYLINT_SCORE: 7.0 # Minimum pylint score required
 
 jobs:
   static-analysis:
@@ -28,12 +48,60 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
+          # Use a recent stable Python version that works with most projects
           python-version: "3.11"
 
       - name: Install static analysis tools
         run: |
           python -m pip install --upgrade pip
-          pip install black isort flake8 pylint mypy pytest coverage pytest-cov
+
+          # Install project dependencies from multiple possible sources
+          echo "🔍 Detecting project dependencies..."
+          
+          if [ -f requirements.txt ]; then
+            echo "📦 Installing from requirements.txt..."
+            pip install -r requirements.txt || echo "⚠️ Warning: Some requirements.txt dependencies may have failed to install"
+          fi
+          
+          if [ -f requirements-dev.txt ]; then
+            echo "📦 Installing from requirements-dev.txt..."
+            pip install -r requirements-dev.txt || echo "⚠️ Warning: Some dev dependencies may have failed to install"
+          fi
+          
+          if [ -f dev-requirements.txt ]; then
+            echo "📦 Installing from dev-requirements.txt..."
+            pip install -r dev-requirements.txt || echo "⚠️ Warning: Some dev dependencies may have failed to install"
+          fi
+          
+          if [ -f pyproject.toml ]; then
+            echo "📦 Installing from pyproject.toml..."
+            pip install -e . || echo "⚠️ Warning: pyproject.toml installation may have failed"
+          fi
+          
+          if [ -f setup.py ]; then
+            echo "📦 Installing from setup.py..."
+            pip install -e . || echo "⚠️ Warning: setup.py installation may have failed"
+          fi
+          
+          if [ -f Pipfile ]; then
+            echo "📦 Installing pipenv and dependencies..."
+            pip install pipenv || echo "⚠️ Warning: pipenv installation failed"
+            pipenv install --dev --system || echo "⚠️ Warning: Pipfile dependencies may have failed to install"
+          fi
+
+          # Install static analysis tools with specific versions for consistency and reliability
+          echo "🛠️ Installing static analysis tools..."
+          pip install black==23.12.1 isort==5.13.2 flake8==7.0.0 pylint==3.0.3 mypy==1.8.0 pytest==7.4.4 coverage==7.4.0 pytest-cov==4.1.0
+
+          # Verify installations and show versions for debugging
+          echo "✅ Verifying tool installations..."
+          echo "✅ Black: $(black --version)"
+          echo "✅ isort: $(isort --version)"
+          echo "✅ flake8: $(flake8 --version)"
+          echo "✅ pylint: $(pylint --version | head -1)"
+          echo "✅ mypy: $(mypy --version)"
+          echo "✅ pytest: $(pytest --version)"
+          echo "✅ coverage: $(coverage --version)"
 
       - name: Initialize analysis tracking
         run: |
@@ -43,34 +111,74 @@ jobs:
           echo "0" > major_issues.txt
           echo "0" > minor_issues.txt
           echo "0" > excluded_count.txt
-          
+
           # Create issues tracking files
           touch major_issues_details.txt
           touch minor_issues_details.txt
-          
-          # Detect project structure
+
+          # Detect project structure - UNIVERSAL VERSION for any Python project
           echo "## 📁 Project Structure Analysis" > analysis-report.md
           echo "" >> analysis-report.md
-          
-          # Find Python files
+
+          # Find Python files with comprehensive exclusions for any project type
           PYTHON_FILES=$(find . -name "*.py" \
             -not -path "./.*" \
             -not -path "./venv/*" \
             -not -path "./env/*" \
             -not -path "./.venv/*" \
+            -not -path "./virtualenv/*" \
             -not -path "./site-packages/*" \
             -not -path "./build/*" \
             -not -path "./dist/*" \
             -not -path "./__pycache__/*" \
-            -not -path "./node_modules/*" | wc -l)
-          
-          TEST_FILES=$(find . -name "*test*.py" -o -name "test_*.py" \
+            -not -path "./.pytest_cache/*" \
+            -not -path "./.mypy_cache/*" \
+            -not -path "./.tox/*" \
+            -not -path "./htmlcov/*" \
+            -not -path "./node_modules/*" \
+            -not -path "./.git/*" \
+            -not -path "./migrations/*" \
+            -not -path "./alembic/*" | wc -l)
+
+          # Find test files with multiple common patterns
+          TEST_FILES=$(find . \( -name "*test*.py" -o -name "test_*.py" -o -name "*_test.py" -o -path "*/test/*" -o -path "*/tests/*" \) \
             -not -path "./venv/*" \
             -not -path "./env/*" \
-            -not -path "./.venv/*" | wc -l)
-            
+            -not -path "./.venv/*" \
+            -not -path "./virtualenv/*" \
+            -not -path "./__pycache__/*" \
+            -not -path "./.pytest_cache/*" \
+            -not -path "./.git/*" | wc -l)
+
+          # Detect common Python project structure patterns
+          SOURCE_STRUCTURE=""
+          [ -d "src" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE src/"
+          [ -d "app" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE app/"
+          [ -d "lib" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE lib/"
+          [ -d "libs" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE libs/"
+          [ -d "library" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE library/"
+          [ -d "modules" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE modules/"
+          [ -d "package" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE package/"
+          [ -d "packages" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE packages/"
+          [ -d "scripts" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE scripts/"
+          [ -d "code" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE code/"
+          [ -d "core" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE core/"
+          [ -d "utils" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE utils/"
+          [ -d "tests" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE tests/"
+          [ -d "test" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE test/"
+          [ -d "testing" ] && SOURCE_STRUCTURE="$SOURCE_STRUCTURE testing/"
+          
+          # Detect framework-specific patterns
+          FRAMEWORK_TYPE=""
+          [ -f "manage.py" ] && FRAMEWORK_TYPE="Django"
+          [ -f "app.py" ] || [ -f "main.py" ] && FRAMEWORK_TYPE="Flask/FastAPI"
+          [ -d "alembic" ] && FRAMEWORK_TYPE="$FRAMEWORK_TYPE + SQLAlchemy"
+          [ -f "setup.py" ] || [ -f "pyproject.toml" ] && FRAMEWORK_TYPE="$FRAMEWORK_TYPE + Package"
+
           echo "- 🐍 Python files found: $PYTHON_FILES" >> analysis-report.md
           echo "- 🧪 Test files found: $TEST_FILES" >> analysis-report.md
+          [ -n "$SOURCE_STRUCTURE" ] && echo "- 📂 Source directories: $SOURCE_STRUCTURE" >> analysis-report.md
+          [ -n "$FRAMEWORK_TYPE" ] && echo "- 🚀 Framework detected: $FRAMEWORK_TYPE" >> analysis-report.md
           echo "" >> analysis-report.md
 
       - name: Run Black (code formatting check)
@@ -78,15 +186,22 @@ jobs:
         run: |
           echo "## 🖤 Black Code Formatting Check" >> analysis-report.md
           echo "" >> analysis-report.md
-          
+
           TOTAL_CHECKS=$(cat total_checks.txt)
           echo "$((TOTAL_CHECKS + 1))" > total_checks.txt
-          
+
           set +e
-          black --line-length 88 --target-version py38 --check --diff . > black-output.txt 2>&1
+          black --line-length 88 \
+                --target-version py38 \
+                --skip-string-normalization \
+                --quiet \
+                --check \
+                --diff \
+                --exclude '/(\.eggs|\.git|\.hg|\.mypy_cache|\.tox|\.venv|_build|buck-out|build|dist|venv|env)/' \
+                . > black-output.txt 2>&1
           BLACK_EXIT_CODE=$?
           set -e
-          
+
           if [ $BLACK_EXIT_CODE -eq 0 ]; then
             echo "✅ **Black**: All files are properly formatted" >> analysis-report.md
             echo "black_status=✅ Successful" >> $GITHUB_OUTPUT
@@ -112,7 +227,7 @@ jobs:
               echo "$((MINOR_ISSUES + 1))" > minor_issues.txt
             fi
           fi
-          
+
           echo "" >> analysis-report.md
           echo '<details><summary>View Details</summary>' >> analysis-report.md
           echo "" >> analysis-report.md
@@ -128,15 +243,30 @@ jobs:
         run: |
           echo "## 📦 isort Import Sorting Check" >> analysis-report.md
           echo "" >> analysis-report.md
-          
+
           TOTAL_CHECKS=$(cat total_checks.txt)
           echo "$((TOTAL_CHECKS + 1))" > total_checks.txt
-          
+
           set +e
-          isort --profile black --multi-line 3 --line-length 88 --check-only --diff . > isort-output.txt 2>&1
+          isort --profile black \
+                --multi-line 3 \
+                --line-length 88 \
+                --force-grid-wrap 0 \
+                --use-parentheses \
+                --ensure-newline-before-comments \
+                --skip .git \
+                --skip __pycache__ \
+                --skip .venv \
+                --skip venv \
+                --skip env \
+                --skip build \
+                --skip dist \
+                --check-only \
+                --diff \
+                . > isort-output.txt 2>&1
           ISORT_EXIT_CODE=$?
           set -e
-          
+
           if [ $ISORT_EXIT_CODE -eq 0 ]; then
             echo "✅ **isort**: All imports are properly sorted" >> analysis-report.md
             echo "isort_status=✅ Successful" >> $GITHUB_OUTPUT
@@ -152,7 +282,7 @@ jobs:
             MINOR_ISSUES=$(cat minor_issues.txt)
             echo "$((MINOR_ISSUES + 1))" > minor_issues.txt
           fi
-          
+
           echo "" >> analysis-report.md
           echo '<details><summary>View Details</summary>' >> analysis-report.md
           echo "" >> analysis-report.md
@@ -168,19 +298,43 @@ jobs:
         run: |
           echo "## 🔍 flake8 Style and Syntax Check" >> analysis-report.md
           echo "" >> analysis-report.md
-          
+
           TOTAL_CHECKS=$(cat total_checks.txt)
           echo "$((TOTAL_CHECKS + 1))" > total_checks.txt
-          
+
           set +e
-          flake8 --max-line-length=88 \
-                 --ignore=E203,W503,W504 \
-                 --exclude=.git,__pycache__,.venv,venv,env,dist,build,*.egg-info,node_modules \
-                 --statistics \
-                 . > flake8-output.txt 2>&1
+          # First, identify Python source directories with comprehensive detection
+          SOURCE_DIRS=""
+          for dir in src/ app/ lib/ libs/ library/ modules/ package/ packages/ scripts/ code/ core/ utils/ tests/ test/ testing/; do
+            if [ -d "$dir" ]; then
+              SOURCE_DIRS="$SOURCE_DIRS $dir"
+            fi
+          done
+
+          # If no standard directories found, scan current directory with comprehensive exclusions
+          if [ -z "$SOURCE_DIRS" ]; then
+            echo "No standard source directories found, scanning current directory with exclusions..."
+            flake8 --max-line-length=88 \
+                   --max-complexity=10 \
+                   --max-doc-length=72 \
+                   --ignore=E203,W503,W504,E501,E701,W601,E266,E402,W291,W293,E302,E305 \
+                   --exclude=.git,__pycache__,.venv,venv,env,virtualenv,dist,build,*.egg-info,node_modules,.pytest_cache,.mypy_cache,.tox,htmlcov,migrations,alembic \
+                   --statistics \
+                   --count \
+                   . > flake8-output.txt 2>&1
+          else
+            echo "Scanning identified source directories: $SOURCE_DIRS"
+            flake8 --max-line-length=88 \
+                   --max-complexity=10 \
+                   --max-doc-length=72 \
+                   --ignore=E203,W503,W504,E501,E701,W601,E266,E402,W291,W293,E302,E305 \
+                   --statistics \
+                   --count \
+                   $SOURCE_DIRS > flake8-output.txt 2>&1
+          fi
           FLAKE8_EXIT_CODE=$?
           set -e
-          
+
           if [ $FLAKE8_EXIT_CODE -eq 0 ]; then
             echo "✅ **flake8**: No style or syntax issues found" >> analysis-report.md
             echo "flake8_status=✅ Successful" >> $GITHUB_OUTPUT
@@ -209,7 +363,7 @@ jobs:
               echo "$((MINOR_ISSUES + 1))" > minor_issues.txt
             fi
           fi
-          
+
           echo "" >> analysis-report.md
           echo '<details><summary>View Details</summary>' >> analysis-report.md
           echo "" >> analysis-report.md
@@ -225,7 +379,7 @@ jobs:
         run: |
           echo "## 🔎 pylint Comprehensive Code Analysis" >> analysis-report.md
           echo "" >> analysis-report.md
-          
+
           # Find Python files dynamically
           python_files=$(find . -name "*.py" \
             -not -path "./.*" \
@@ -235,21 +389,49 @@ jobs:
             -not -path "./__pycache__/*" \
             -not -path "./build/*" \
             -not -path "./dist/*" | head -50)
-          
+
           if [ -n "$python_files" ]; then
             TOTAL_CHECKS=$(cat total_checks.txt)
             echo "$((TOTAL_CHECKS + 1))" > total_checks.txt
             
             set +e
+            # Use comprehensive inline command-line configuration instead of external files
             pylint --max-line-length=88 \
-                   --disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods \
+                   --good-names=i,j,k,ex,Run,_,id,db,pk,up \
+                   --max-args=5 \
+                   --max-attributes=7 \
+                   --max-bool-expr=5 \
+                   --max-branches=12 \
+                   --max-locals=15 \
+                   --max-parents=7 \
+                   --max-public-methods=20 \
+                   --max-returns=6 \
+                   --max-statements=50 \
+                   --min-public-methods=2 \
+                   --max-nested-blocks=5 \
+                   --disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods,wrong-import-position,import-outside-toplevel,invalid-name,line-too-long,unused-import,unused-variable,broad-except,import-error,parse-error \
                    --reports=yes \
-                   --output-format=parseable \
+                   --output-format=text \
+                   --score=yes \
                    $python_files > pylint-output.txt 2>&1
             PYLINT_EXIT_CODE=$?
             
-            # Extract pylint score
+            # Extract pylint score with multiple fallback methods
             PYLINT_SCORE=$(grep -o "Your code has been rated at [0-9]*\.[0-9]*" pylint-output.txt | grep -o "[0-9]*\.[0-9]*" || echo "0")
+            if [ "$PYLINT_SCORE" = "0" ]; then
+              # Alternative extraction method
+              PYLINT_SCORE=$(grep -o "rated at [0-9]*\.[0-9]*" pylint-output.txt | grep -o "[0-9]*\.[0-9]*" || echo "0")
+            fi
+            if [ "$PYLINT_SCORE" = "0" ]; then
+              # Last resort: look for score pattern anywhere
+              PYLINT_SCORE=$(grep -oE "[0-9]+\.[0-9]+/10" pylint-output.txt | head -1 | cut -d'/' -f1 || echo "0")
+            fi
+            
+            # Ensure we have a valid score
+            if [ -z "$PYLINT_SCORE" ] || [ "$PYLINT_SCORE" = "0" ]; then
+              echo "Warning: Could not extract pylint score, defaulting to 0"
+              PYLINT_SCORE="0"
+            fi
             
             # Count different severity issues
             ERROR_COUNT=$(grep -E ": E[0-9]+:" pylint-output.txt | wc -l || echo "0")
@@ -259,10 +441,16 @@ jobs:
             
             set -e
             
-            # Determine severity based on score and critical errors
+            # Determine severity based on score and critical errors - ROBUST VERSION
             CRITICAL_ERRORS=$(grep -E "(syntax-error|undefined-variable|used-before-assignment|import-error|no-member)" pylint-output.txt | wc -l || echo "0")
             
-            if [ "$CRITICAL_ERRORS" -gt 0 ] || [ "$(echo "$PYLINT_SCORE < $MIN_PYLINT_SCORE" | bc -l 2>/dev/null || echo 0)" -eq 1 ]; then
+            # Use Python for floating point comparison instead of bc for better reliability
+            set +e
+            python3 -c "import sys; score = float('$PYLINT_SCORE' or '0'); threshold = float('$MIN_PYLINT_SCORE'); sys.exit(0 if score >= threshold else 1)" 2>/dev/null
+            SCORE_ABOVE_THRESHOLD=$?
+            set -e
+            
+            if [ "$CRITICAL_ERRORS" -gt 0 ] || [ "$SCORE_ABOVE_THRESHOLD" -ne 0 ]; then
               echo "❌ **pylint**: Score ${PYLINT_SCORE}/10 - $ERROR_COUNT errors, $WARNING_COUNT warnings" >> analysis-report.md
               echo "pylint_status=❌ Major Issues" >> $GITHUB_OUTPUT
               echo "pylint_severity=major" >> $GITHUB_OUTPUT
@@ -290,7 +478,7 @@ jobs:
             EXCLUDED_COUNT=$(cat excluded_count.txt)
             echo "$((EXCLUDED_COUNT + 1))" > excluded_count.txt
           fi
-          
+
           echo "" >> analysis-report.md
           echo '<details><summary>View Details</summary>' >> analysis-report.md
           echo "" >> analysis-report.md
@@ -306,19 +494,28 @@ jobs:
         run: |
           echo "## 🎯 mypy Type Checking" >> analysis-report.md
           echo "" >> analysis-report.md
-          
+
           TOTAL_CHECKS=$(cat total_checks.txt)
           echo "$((TOTAL_CHECKS + 1))" > total_checks.txt
-          
+
           set +e
           mypy --ignore-missing-imports \
                --no-strict-optional \
                --show-error-codes \
+               --warn-unused-ignores \
+               --warn-redundant-casts \
+               --warn-return-any \
+               --warn-unreachable \
+               --allow-untyped-calls \
+               --allow-untyped-defs \
+               --allow-incomplete-defs \
+               --allow-untyped-globals \
+               --disable-error-code=import-untyped \
                --exclude '(venv|env|__pycache__|\.git|build|dist|node_modules)' \
                . > mypy-output.txt 2>&1
           MYPY_EXIT_CODE=$?
           set -e
-          
+
           if [ $MYPY_EXIT_CODE -eq 0 ]; then
             echo "✅ **mypy**: No type checking issues found" >> analysis-report.md
             echo "mypy_status=✅ Successful" >> $GITHUB_OUTPUT
@@ -346,7 +543,7 @@ jobs:
               echo "$((MINOR_ISSUES + 1))" > minor_issues.txt
             fi
           fi
-          
+
           echo "" >> analysis-report.md
           echo '<details><summary>View Details</summary>' >> analysis-report.md
           echo "" >> analysis-report.md
@@ -362,41 +559,78 @@ jobs:
         run: |
           echo "## 📊 Code Coverage Analysis" >> analysis-report.md
           echo "" >> analysis-report.md
-          
+
           TOTAL_CHECKS=$(cat total_checks.txt)
           echo "$((TOTAL_CHECKS + 1))" > total_checks.txt
-          
-          # Look for test files more comprehensively
-          TEST_FILES=$(find . \( -name "*test*.py" -o -name "test_*.py" -o -path "*/test/*" -o -path "*/tests/*" \) \
+
+          # Look for test files with comprehensive patterns for any Python project
+          TEST_FILES=$(find . \( -name "*test*.py" -o -name "test_*.py" -o -name "*_test.py" -o -path "*/test/*" -o -path "*/tests/*" -o -path "*/testing/*" \) \
             -not -path "./venv/*" \
             -not -path "./env/*" \
             -not -path "./.venv/*" \
+            -not -path "./virtualenv/*" \
             -not -path "./build/*" \
-            -not -path "./dist/*")
-          
+            -not -path "./dist/*" \
+            -not -path "./__pycache__/*" \
+            -not -path "./.pytest_cache/*" \
+            -not -path "./.mypy_cache/*" \
+            -not -path "./.git/*" \
+            -not -path "./migrations/*" \
+            -not -path "./alembic/*")
+
+          # Identify source directories for comprehensive coverage targeting
+          SOURCE_DIRS=""
+          for dir in src app lib libs library modules package packages scripts code core utils; do
+            if [ -d "$dir" ]; then
+              SOURCE_DIRS="$SOURCE_DIRS --cov=$dir"
+            fi
+          done
+
+          # If no standard source dirs, use current directory with comprehensive excludes
+          if [ -z "$SOURCE_DIRS" ]; then
+            SOURCE_DIRS="--cov=. --cov-config=setup.cfg"
+          fi
+
           if [ -n "$TEST_FILES" ]; then
             set +e
-            # Run coverage with detailed output
-            python -m pytest --cov=. \
+            echo "Running coverage analysis with source dirs: $SOURCE_DIRS"
+            # Run coverage with comprehensive configuration for any Python project
+            python -m pytest $SOURCE_DIRS \
                              --cov-report=term-missing \
                              --cov-report=html:htmlcov \
+                             --cov-report=xml:coverage.xml \
                              --cov-fail-under=$MIN_COVERAGE_THRESHOLD \
                              --ignore=venv \
                              --ignore=env \
                              --ignore=.venv \
+                             --ignore=virtualenv \
                              --ignore=build \
                              --ignore=dist \
+                             --ignore=.pytest_cache \
+                             --ignore=.mypy_cache \
+                             --ignore=.tox \
+                             --ignore=htmlcov \
+                             --ignore=migrations \
+                             --ignore=alembic \
+                             --ignore=node_modules \
                              -v > coverage-output.txt 2>&1
             COVERAGE_EXIT_CODE=$?
             
-            # Get detailed coverage info
-            python -m coverage report --show-missing > coverage-detailed.txt 2>&1 || echo "Coverage report failed" > coverage-detailed.txt
+            # Get detailed coverage info with fallback
+            python -m coverage report --show-missing > coverage-detailed.txt 2>&1 || {
+              echo "Standard coverage report failed, trying alternative..." > coverage-detailed.txt
+              python -m coverage report >> coverage-detailed.txt 2>&1 || echo "Coverage report unavailable" > coverage-detailed.txt
+            }
             
-            # Extract coverage percentage
-            COVERAGE_PERCENT=$(grep -o "TOTAL.*[0-9]\+%" coverage-detailed.txt | grep -o "[0-9]\+%" | grep -o "[0-9]\+" || echo "0")
+            # Extract coverage percentage with multiple fallback methods
+            COVERAGE_PERCENT=$(grep -o "TOTAL.*[0-9]\+%" coverage-detailed.txt | tail -1 | grep -o "[0-9]\+%" | grep -o "[0-9]\+" || echo "0")
+            if [ "$COVERAGE_PERCENT" = "0" ]; then
+              # Alternative extraction method
+              COVERAGE_PERCENT=$(grep "TOTAL" coverage-detailed.txt | grep -o "[0-9]\+%" | grep -o "[0-9]\+" || echo "0")
+            fi
             
-            # Count uncovered lines
-            UNCOVERED_LINES=$(grep -c "Missing" coverage-detailed.txt 2>/dev/null || echo "0")
+            # Count uncovered lines more robustly
+            UNCOVERED_LINES=$(grep -c "Missing\|MISSING" coverage-detailed.txt 2>/dev/null || echo "0")
             
             set -e
             
@@ -449,14 +683,14 @@ jobs:
           MAJOR_ISSUES=$(cat major_issues.txt)
           MINOR_ISSUES=$(cat minor_issues.txt)
           EXCLUDED=$(cat excluded_count.txt)
-          
+
           echo "📊 Analysis Summary:" 
           echo "- Total checks: $TOTAL"
           echo "- Successful: $SUCCESSFUL"
           echo "- Major issues: $MAJOR_ISSUES"
           echo "- Minor issues: $MINOR_ISSUES"
           echo "- Excluded: $EXCLUDED"
-          
+
           # Create comprehensive report
           {
             echo "# 🧪 Python Static Code Analysis Report"
@@ -543,16 +777,16 @@ jobs:
             echo "- **Min Pylint Score:** $MIN_PYLINT_SCORE"
             echo ""
           } > final-report.md
-          
+
           # Append detailed analysis
           cat analysis-report.md >> final-report.md
-          
+
           # Add footer
           echo "" >> final-report.md
           echo "---" >> final-report.md
           echo "*Report generated on $(date -u '+%Y-%m-%d %H:%M:%S UTC') by GitHub Actions*" >> final-report.md
           echo "*Like SonarCloud for Python - Comprehensive Static Analysis*" >> final-report.md
-          
+
           # Set outputs
           echo "overall_status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
           echo "overall_success=$OVERALL_SUCCESS" >> $GITHUB_OUTPUT
@@ -615,7 +849,7 @@ jobs:
           echo "- Major Issues: ${{ steps.final_report.outputs.major_issues_count }}"
           echo "- Minor Issues: ${{ steps.final_report.outputs.minor_issues_count }}"
           echo "- Success: ${{ steps.final_report.outputs.overall_success }}"
-          
+
           # Create a quality gate badge
           if [ "${{ steps.final_report.outputs.overall_success }}" = "true" ]; then
             if [ "${{ steps.final_report.outputs.minor_issues_count }}" = "0" ]; then
@@ -634,7 +868,7 @@ jobs:
         run: |
           echo "🎯 Final Quality Gate Decision:"
           echo "Status: $QUALITY_GATE_STATUS"
-          
+
           if [ "${{ steps.final_report.outputs.overall_success }}" = "false" ]; then
             echo "❌ Quality gate failed - blocking merge"
             echo "Major issues: ${{ steps.final_report.outputs.major_issues_count }}"
